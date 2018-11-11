@@ -25,7 +25,7 @@ def triplet_loss(anchor, positive, negative, n):
         sigmoid_basic_loss = tf.nn.sigmoid(basic_loss)
         print(anchor.shape, pos_dist.shape, basic_loss.shape, sigmoid_basic_loss.shape, "loss")
         sum_loss = tf.reduce_sum(sigmoid_basic_loss)
-        loss = tf.math.log(1 + tf.math.floor(n / p) * sum_loss)
+        loss = tf.reduce_mean(tf.math.log(1 + tf.math.floor(n / p) * sum_loss))
         print(loss.shape)
     return loss
 
@@ -34,6 +34,7 @@ def encoder(placeholder_x, bits):
     with tf.variable_scope("encoder"):
         fc1 = tf.layers.dense(placeholder_x,
                               bits,
+                              use_bias=False,
                               activation=tf.nn.tanh,
                               kernel_initializer=tf.contrib.layers.xavier_initializer(),
                               kernel_regularizer=tf.contrib.layers.l2_regularizer(0.001))
@@ -64,19 +65,19 @@ def train_model(train_x, placeholder_x, placeholder_n, bits, learning_rate, Num_
     print("max{}".format(max_class))
     num_iterations = 1000
     loss = get_loss(placeholder_x, bits, Num_p, placeholder_n)
-    model_saver = tf.train.Saver(max_to_keep=None)
     opt = tf.train.GradientDescentOptimizer(learning_rate=learning_rate).minimize(loss)
     graph_path = './model/'
     path = graph_path + 'model'
+    model_saver = tf.train.Saver(max_to_keep=None)
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
         sess.run(tf.local_variables_initializer())
-        # L = tf.summary.scalar('loss', loss)
+        L = tf.summary.scalar('loss', loss)
         writer = tf.summary.FileWriter(graph_path, sess.graph)
         for n_pass in range(num_iterations):
             anchor_class = np.random.randint(max_class)
             positives = train_x[train_x[:, -1] == anchor_class]
-            print(positives.shape, anchor_class)
+            # print(positives.shape, anchor_class)
             a, b = np.random.randint(len(positives), size=2)
             A = positives[a:a+1]
             P = positives[b:b+1]
@@ -84,15 +85,16 @@ def train_model(train_x, placeholder_x, placeholder_n, bits, learning_rate, Num_
             Num_n = len(negatives)
             slices = np.random.randint(Num_n, size=Num_p)
             N = negatives[slices]
-            print(A.shape, P.shape, N.shape, Num_n)
+            # print(A.shape, P.shape, N.shape, Num_n)
             x_batch = np.concatenate((A, P, N), axis=0)[:, :-1]
             x_batch = x_batch[np.newaxis, :]
-            print(x_batch.shape)
+            # print(x_batch.shape)
             feed_dict = {placeholder_x: x_batch, placeholder_n: np.array([Num_n])[np.newaxis, :]}
-            _, loss_eval = sess.run([opt, loss], feed_dict=feed_dict)
+            _, loss_eval, result = sess.run([opt, loss, L], feed_dict=feed_dict)
             print("Batch {} finished. loss={}".format(n_pass, loss_eval))
-            # writer.add_summary(res, n_pass)
+            writer.add_summary(result, n_pass)
         model_saver.save(sess=sess, save_path=path)
+        writer.close()
     return
 
 
@@ -116,4 +118,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
