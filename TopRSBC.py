@@ -44,8 +44,8 @@ def encoder(placeholder_x, bits):
 
 def get_loss(placeholder_x, bits, p, n):
     # placeholder_x (2+p)*input_dim
-    data_p = data_pre(placeholder_x)  # pre
-    encoded = encoder(data_p, bits)
+    # data_p = data_pre(placeholder_x)  # pre
+    encoded = encoder(placeholder_x, bits)
     anchor = encoded[:, 0, :]
     print("anchor{}".format(anchor.shape))
     dim = anchor.shape[1]
@@ -56,7 +56,7 @@ def get_loss(placeholder_x, bits, p, n):
     negatives = encoded[:, 2:, :]
     print(anchors.shape, negatives.shape, positives.shape)
     loss = triplet_loss(anchors, positives, negatives, n) + tf.losses.get_regularization_loss()
-    return loss
+    return loss, anchor
 
 
 def train_model(train_x, placeholder_x, placeholder_n, bits, learning_rate, Num_p):
@@ -64,7 +64,7 @@ def train_model(train_x, placeholder_x, placeholder_n, bits, learning_rate, Num_
     max_class = int(max(train_x[:, -1])) + 1  # 0 1 2...
     print("max{}".format(max_class))
     num_iterations = 1000
-    loss = get_loss(placeholder_x, bits, Num_p, placeholder_n)
+    loss, _ = get_loss(placeholder_x, bits, Num_p, placeholder_n)
     opt = tf.train.GradientDescentOptimizer(learning_rate=learning_rate).minimize(loss)
     graph_path = './model/'
     path = graph_path + 'model'
@@ -98,13 +98,26 @@ def train_model(train_x, placeholder_x, placeholder_n, bits, learning_rate, Num_
     return
 
 
-def test_model(test_x, placeholder_x, bits):
+def test_model(test_x, placeholder_x, bits, placeholder_n, Num_p):
+    _, anchor = get_loss(placeholder_x, bits, Num_p, placeholder_n)
+    output = []
+    saver = tf.train.Saver()
+    with tf.Session() as sess:
+        for i in range(len(test_x)):
+            path = "./model/"
+            saver.restore(sess, tf.train.latest_checkpoint(path))
+            input_x = np.reshape(np.tile(test_x[i], [1, Num_p+2]), (1, Num_p+2, -1))
+            feed_dict = {placeholder_x: input_x, placeholder_n: np.array([1])[np.newaxis, :]}
+            encoded = sess.run(anchor, feed_dict=feed_dict)
+            output.append(encoded[0])
+    output = np.array(output)
     return
 
 
 def main():
     data = sio.loadmat("./datasets/eeg.mat")["data"]
     data[np.isnan(data)] = 0
+    data = data[:, :-1] - np.mean(data[:, :-1], axis=0)
     train_x, test_x = train_test_split(data, test_size=0.2)
     input_dim = np.shape(train_x)[1] - 1  # features+label
     output_dim = 64  # bits
