@@ -102,16 +102,19 @@ def test_model(test_x, placeholder_x, bits, placeholder_n, Num_p):
     _, anchor = get_loss(placeholder_x, bits, Num_p, placeholder_n)
     output = []
     saver = tf.train.Saver()
+    label = test_x[:, -1]
+    data_x = test_x[:, :-1]
     with tf.Session() as sess:
         for i in range(len(test_x)):
             path = "./model/"
             saver.restore(sess, tf.train.latest_checkpoint(path))
-            input_x = np.reshape(np.tile(test_x[i], [1, Num_p+2]), (1, Num_p+2, -1))
+            input_x = np.reshape(np.tile(data_x[i], [1, Num_p+2]), (1, Num_p+2, -1))
             feed_dict = {placeholder_x: input_x, placeholder_n: np.array([1])[np.newaxis, :]}
             encoded = sess.run(anchor, feed_dict=feed_dict)
             output.append(encoded[0])
     output = np.array(output)
-    return
+
+    return precision
 
 
 def main():
